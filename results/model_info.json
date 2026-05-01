@@ -1,0 +1,17 @@
+{
+  "model_type": "IsolationForest",
+  "contamination": 0.01,
+  "n_estimators": 100,
+  "features_used": [
+    "mean_spread",
+    "bar_volatility",
+    "order_flow_imbalance",
+    "bid_depth",
+    "ask_depth",
+    "depth_imbalance",
+    "trade_count"
+  ],
+  "training_samples": 500000,
+  "total_samples_scored": 5587547,
+  "anomalies_detected": 56833
+}
