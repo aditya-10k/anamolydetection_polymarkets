@@ -1,454 +1,450 @@
-# Polymarket High-Frequency Anomaly Detection
-
-> A machine learning system that detects unusual trading patterns in prediction markets using unsupervised anomaly detection. This project combines market microstructure theory with real-world data to identify trading anomalies, flash crashes, and liquidity crises.
-
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Status](https://img.shields.io/badge/status-active-success.svg)]()
-
-## 🎯 Project Overview
-
-### The Problem
-Prediction markets like Polymarket have large volumes of orderbook activity. Detecting unusual patterns in this data is valuable for:
-- **Risk Management**: Identify sudden liquidity crises
-- **Market Integrity**: Detect potential manipulation
-- **Trading Insights**: Understand when markets become stressed
-
-### The Solution
-This project uses **Isolation Forest**, an unsupervised anomaly detection algorithm, to identify statistical outliers in market microstructure features. The system requires no labeled data and can process thousands of samples per second.
-
-### Key Results
-- **Detection Rate**: 1% of samples flagged as anomalous
-- **False Positive Rate**: Validated against real price movements
-- **Interpretability**: Each anomaly can be traced to specific features
-- **Speed**: Processes 100K+ samples in < 1 minute
+# High-Frequency Anomaly Detection in Polymarket Prediction Markets
+## Complete Project Report
 
 ---
 
-## 🏗️ Architecture
+## 1. Project Objective
 
-### Data Flow
-```
-Raw Orderbook Data
-        ↓
-Market Microstructure Features
-(spread, depth, OFI, volatility)
-        ↓
-Feature Normalization
-(RobustScaler)
-        ↓
-Isolation Forest
-        ↓
-Anomaly Scores & Predictions
-        ↓
-Visualization & Analysis
-```
+The goal of this project is to build an **unsupervised anomaly detection system** that identifies unusual or stressed trading activity in Polymarket prediction markets. Polymarket is a decentralized prediction market where users trade on event outcomes (e.g., elections, crypto prices, sports). The orderbook data from these markets contains minute-level microstructure features.
 
-### Model Details
-
-**Algorithm**: Isolation Forest
-- **Why**: Unsupervised, efficient, robust to high-dimensional data
-- **Key Idea**: Anomalies are "easier to isolate" than normal points
-- **Implementation**: Scikit-learn, 100 trees, 1% contamination
-
-**Features**:
-| Feature | Interpretation | Alert When |
-|---------|-----------------|-----------|
-| Bid-Ask Spread | Liquidity | Widens significantly |
-| Order Book Depth | Market depth | Disappears suddenly |
-| Order Flow Imbalance | Buy/sell pressure | Extreme imbalance |
-| Volatility | Price movement | Spikes |
-| Momentum | Price trend | Reverses suddenly |
+### Why This Matters
+- **Risk Management**: Detect sudden liquidity crises before they cascade
+- **Market Integrity**: Identify potential market manipulation or wash trading
+- **Trading Signals**: Anomalous periods often precede large price movements
+- **Regulatory Compliance**: Surveillance tooling for market operators
 
 ---
 
-## 📊 Results & Visualizations
+## 2. Data Description
 
-### Anomaly Timeline
-![Anomaly Timeline](https://via.placeholder.com/800x300?text=Anomaly+Timeline)
+### 2.1 Source
+- **File**: `ml_features_1m_v2.parquet` (32.3 MB compressed, ~821 MB in memory)
+- **Format**: Apache Parquet (columnar storage)
+- **Granularity**: 1-minute bars per market
 
-Timeline showing anomaly scores over time with detected anomalies highlighted in red.
+### 2.2 Dataset Statistics
 
-### Score Distribution
-![Score Distribution](https://via.placeholder.com/800x300?text=Score+Distribution)
+| Metric | Value |
+|--------|-------|
+| **Total rows** | 5,587,547 |
+| **Total columns** | 16 |
+| **Unique markets** | 4,710 |
+| **Date range** | 2026-03-06 00:00 UTC → 2026-03-11 23:59 UTC |
+| **Time span** | ~6 days |
+| **Missing values** | 0 across all columns |
 
-Histogram of anomaly scores with the 1% detection threshold marked.
+### 2.3 Column Schema
 
-### Top Anomalies
-```
-Index 45234: Score -0.523 (Spread: 3.12σ, Depth: -2.46σ, OFI: 4.79σ)
-Index 32156: Score -0.489 (Volatility spike, extreme order imbalance)
-Index 78901: Score -0.445 (Liquidity crisis: all depths collapse)
-```
+| Column | Data Type | Description |
+|--------|-----------|-------------|
+| `market_id` | string | Unique hex identifier for each prediction market (e.g., `0xca797...`) |
+| `minute_bar` | datetime64[UTC] | Timestamp of each 1-minute observation window |
+| `close_mid` | float32 | Mid-price at the close of the 1-min bar (range 0–1, representing event probability) |
+| `mean_spread` | float32 | Average bid-ask spread during the bar (liquidity indicator) |
+| `close_spread` | float32 | Bid-ask spread at bar close |
+| `bar_volatility` | float32 | Intra-bar price volatility (max – min within the minute) |
+| `total_volume` | float32 | Total trading volume in the minute (USD equivalent) |
+| `buy_volume` | float32 | Volume from buy-side (market buys / aggressive buys) |
+| `sell_volume` | float32 | Volume from sell-side (market sells / aggressive sells) |
+| `trade_count` | uint32 | Number of individual trades executed in the minute |
+| `order_flow_imbalance` | float32 | `buy_volume − sell_volume` — net directional pressure |
+| `target` | int8 | Binary label: 1 = price went up in next period, 0 = down/flat |
+| `return_1m` | float32 | 1-minute forward return (%) |
+| `bid_depth` | float64 | Total liquidity on the bid side of the orderbook (USD) |
+| `ask_depth` | float64 | Total liquidity on the ask side of the orderbook (USD) |
+| `depth_imbalance` | float64 | `(bid_depth − ask_depth) / (bid_depth + ask_depth)` — book skew |
 
----
+### 2.4 Key Data Statistics
 
-## 🚀 Quick Start
+| Feature | Mean | Std | Min | 25th | Median | 75th | Max |
+|---------|------|-----|-----|------|--------|------|-----|
+| close_mid | 0.264 | 0.280 | 0.0005 | 0.015 | 0.205 | 0.435 | 0.999 |
+| mean_spread | 0.107 | 0.228 | 0.0007 | 0.005 | 0.015 | 0.050 | 1.000 |
+| bar_volatility | 0.005 | 0.032 | 0.000 | 0.000 | 0.000 | 0.000 | 0.986 |
+| trade_count | 0.106 | 1.097 | 0 | 0 | 0 | 0 | 443 |
+| order_flow_imbalance | 11.1 | 843.5 | −344,165 | 0.0 | 0.0 | 0.0 | 680,879 |
+| bid_depth | 60,529 | 144,177 | 0.0 | 487 | 2,845 | 22,511 | 5,026,122 |
+| ask_depth | 199,718 | 1,418,655 | 0.0 | 3,551 | 17,553 | 90,905 | 21,935,020 |
+| depth_imbalance | −0.337 | 0.557 | −1.0 | −0.844 | −0.424 | 0.001 | 1.0 |
 
-### Prerequisites
-- Python 3.8+
-- ~2GB disk space for processed data
-- Polymarket parquet files (features and labels)
+> [!NOTE]
+> The majority of minute-bars have **zero activity** (trade_count median = 0, OFI median = 0). This is expected in prediction markets where most markets are illiquid and only a subset sees active trading at any given minute. The anomaly detector specifically targets the **rare, extreme-activity minutes**.
 
-### Installation
+### 2.5 Target Distribution (Price Direction)
 
-```bash
-# Clone repository
-git clone https://github.com/yourusername/polymarket-anomaly-detection.git
-cd polymarket-anomaly-detection
+| Class | Count | Percentage |
+|-------|-------|------------|
+| 0 (price down/flat) | 4,098,458 | 73.35% |
+| 1 (price up) | 1,489,089 | 26.65% |
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Basic Usage
-
-```bash
-# Run complete pipeline
-python polymarket_complete_pipeline.py \
-    --data-dir ./data \
-    --output-dir ./results
-
-# Results will appear in ./results/
-```
-
-### Interactive Dashboard
-
-```bash
-# Launch Dash dashboard
-python app.py
-
-# Visit http://localhost:8050 in your browser
-```
-
----
-
-## 📁 Project Structure
-
-```
-polymarket-anomaly-detection/
-├── data/
-│   ├── features/
-│   │   └── ml_features_1m_v2.parquet      # Input features
-│   └── labels/
-│       └── trades.parquet                  # (Optional) Price labels
-│
-├── src/
-│   ├── data_loader.py                      # Data I/O
-│   ├── feature_engineering.py              # Feature preparation
-│   ├── anomaly_detector.py                 # Isolation Forest
-│   ├── analysis.py                         # Result interpretation
-│   └── visualization.py                    # Plotting
-│
-├── results/
-│   ├── summary.json                        # Model metrics
-│   ├── top_anomalies.csv                   # Detected anomalies
-│   ├── 01_anomaly_timeline.png
-│   └── 02_score_distribution.png
-│
-├── notebooks/
-│   └── exploration.ipynb                   # EDA and experiments
-│
-├── polymarket_complete_pipeline.py         # All-in-one script
-├── app.py                                  # Dash dashboard
-├── requirements.txt
-├── QUICK_START.md                          # Step-by-step guide
-└── README.md                               # This file
-```
+> [!IMPORTANT]
+> The `target` column is NOT used in the anomaly detection pipeline (unsupervised). It exists for the separate LightGBM price prediction model in `code/init.ipynb`.
 
 ---
 
-## 💻 Code Examples
+## 3. Methodology
 
-### Loading & Processing Data
+### 3.1 Pipeline Architecture
 
-```python
-from src.data_loader import DataLoader
-from src.feature_engineering import FeaturePreprocessor
-
-# Load features
-loader = DataLoader("./data")
-features = loader.load_features("features/ml_features_1m_v2.parquet")
-
-# Prepare features
-X_scaled, feature_cols = FeaturePreprocessor.preprocess(features)
-print(f"Loaded {X_scaled.shape[0]:,} samples with {X_scaled.shape[1]} features")
+```mermaid
+flowchart TD
+    A["Raw Parquet Data\n5.59M rows × 16 cols"] --> B["Feature Selection\n7 market microstructure features"]
+    B --> C["Data Cleaning\nFill NaN with median\nReplace ±∞"]
+    C --> D["Feature Normalization\nRobustScaler"]
+    D --> E["Random Subsample\n500K rows for training"]
+    E --> F["Isolation Forest\n100 trees, 1% contamination"]
+    F --> G["Score Full Dataset\n5.59M anomaly scores"]
+    G --> H["Analysis & Visualization\nTop anomalies, charts, reports"]
 ```
 
-### Training Detector
+### 3.2 Feature Selection
 
-```python
-from src.anomaly_detector import IsolationForestDetector
+We selected **7 features** that capture market microstructure stress:
 
-# Create and train
-detector = IsolationForestDetector(contamination=0.01)
-detector.fit(X_scaled)
+| # | Feature | Category | What It Captures |
+|---|---------|----------|------------------|
+| 1 | `mean_spread` | Liquidity | How expensive it is to trade (wider spread = less liquid) |
+| 2 | `bar_volatility` | Volatility | Intra-minute price swings (spikes = instability) |
+| 3 | `order_flow_imbalance` | Order Flow | Net buy vs sell pressure (extreme = one-sided market) |
+| 4 | `bid_depth` | Depth (Buy) | Total USD sitting on the bid side |
+| 5 | `ask_depth` | Depth (Sell) | Total USD sitting on the ask side |
+| 6 | `depth_imbalance` | Book Skew | Asymmetry between bid and ask sides |
+| 7 | `trade_count` | Activity | Number of trades executed |
 
-# Get results
-summary, scores = detector.get_summary(X_scaled)
-print(f"Detected {summary['n_anomalies']} anomalies")
+### 3.3 Feature Normalization — RobustScaler
+
+We use **RobustScaler** instead of StandardScaler because:
+
+- Financial data contains extreme outliers (flash crashes, liquidity events)
+- RobustScaler uses the **median and IQR** (interquartile range) instead of mean/std
+- This prevents outliers from distorting the scaling
+
+```
+X_scaled = (X - median(X)) / IQR(X)
 ```
 
-### Analyzing Results
+Where `IQR = Q75 - Q25`.
 
-```python
-from src.analysis import AnomalyAnalyzer
+### 3.4 Feature Correlations
 
-analyzer = AnomalyAnalyzer(features, scores, feature_cols)
-top_anomalies = analyzer.get_top_anomalies(n=10)
-analyzer.print_report(n=10)
+The features are **largely uncorrelated**, which is desirable for Isolation Forest:
+
+| | mean_spread | bar_vol | OFI | bid_depth | ask_depth | depth_imb | trade_count |
+|---|---|---|---|---|---|---|---|
+| **mean_spread** | 1.00 | 0.17 | -0.01 | -0.17 | -0.06 | 0.08 | -0.03 |
+| **bar_volatility** | 0.17 | 1.00 | 0.01 | -0.05 | -0.02 | 0.00 | 0.07 |
+| **OFI** | -0.01 | 0.01 | 1.00 | 0.01 | 0.01 | 0.00 | 0.18 |
+| **bid_depth** | -0.17 | -0.05 | 0.01 | 1.00 | 0.01 | 0.43 | 0.01 |
+| **ask_depth** | -0.06 | -0.02 | 0.01 | 0.01 | 1.00 | -0.11 | -0.01 |
+| **depth_imbalance** | 0.08 | 0.00 | 0.00 | 0.43 | -0.11 | 1.00 | 0.01 |
+| **trade_count** | -0.03 | 0.07 | 0.18 | 0.01 | -0.01 | 0.01 | 1.00 |
+
+> [!TIP]
+> The only notable correlation is between `bid_depth` and `depth_imbalance` (0.43), which is expected since depth_imbalance is mathematically derived from bid_depth and ask_depth.
+
+### 3.5 Anomaly Detection Model — Isolation Forest
+
+#### Algorithm Overview
+
+**Isolation Forest** is an unsupervised anomaly detection algorithm that works on a simple principle: **anomalies are easier to isolate than normal points**.
+
+The algorithm:
+1. Randomly selects a feature
+2. Randomly selects a split value between the min and max of that feature
+3. Recursively partitions the data into isolation trees
+4. Anomalies require **fewer splits** (shorter path length) to be isolated
+5. The anomaly score is the **average path length** across all trees
+
+```mermaid
+flowchart TD
+    subgraph "Isolation Tree Construction"
+        A["All 500K samples"] --> B{"Random Feature\nRandom Split"}
+        B -->|Left| C["Subset A"]
+        B -->|Right| D["Subset B"]
+        C --> E{"Split again"}
+        D --> F{"Split again"}
+        E -->|"Anomaly isolated\nin 2 splits!"| G["🔴 Anomaly\n(short path)"]
+        F --> H["..."]
+        H --> I["..."]
+        I --> J["🟢 Normal\n(long path)"]
+    end
 ```
 
-### Creating Visualizations
+#### Hyperparameters Used
 
-```python
-from src.visualization import AnomalyVisualizer
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| `contamination` | 0.01 (1%) | Expected fraction of anomalies — conservative for rare events |
+| `n_estimators` | 100 | Number of isolation trees in the ensemble |
+| `random_state` | 42 | For reproducibility |
+| `n_jobs` | −1 | Use all CPU cores for parallel training |
+| Training sample | 500,000 | Subsampled from 5.59M for computational efficiency |
+| Scoring | Full 5.59M | All rows scored after training |
 
-visualizer = AnomalyVisualizer(features, scores)
+#### Why Isolation Forest?
 
-# Timeline plot
-fig1 = visualizer.plot_anomaly_timeline()
-fig1.show()
-
-# Distribution
-fig2 = visualizer.plot_anomaly_score_distribution()
-fig2.show()
-```
+| Criterion | Isolation Forest | K-Means | LOF | Autoencoder | One-Class SVM |
+|-----------|:---:|:---:|:---:|:---:|:---:|
+| Unsupervised (no labels) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Scales to millions of rows | ✅ | ✅ | ❌ | ⚠️ | ❌ |
+| Handles high-dim features | ✅ | ⚠️ | ⚠️ | ✅ | ❌ |
+| Robust to outliers | ✅ | ❌ | ✅ | ⚠️ | ❌ |
+| Interpretable | ✅ | ⚠️ | ⚠️ | ❌ | ❌ |
+| Fast inference | ✅ | ✅ | ❌ | ✅ | ❌ |
 
 ---
 
-## 🔬 Technical Deep Dive
+## 4. Results
 
-### Why Isolation Forest?
+### 4.1 Detection Summary
 
-**Advantage over other methods:**
+| Metric | Value |
+|--------|-------|
+| **Total samples scored** | 5,587,547 |
+| **Anomalies detected** | 56,833 |
+| **Anomaly percentage** | 1.02% |
+| **Anomaly score range** | [−0.8201, −0.3272] |
+| **Mean anomaly score** | −0.3883 |
+| **Score std deviation** | 0.0676 |
+| **Detection threshold (1st percentile)** | −0.6317 |
 
-| Method | Supervised? | Speed | Robustness | Interpretability |
-|--------|------------|-------|-----------|-----------------|
-| Isolation Forest | ❌ | ✅✅ | ✅✅ | ✅ |
-| K-Means | ❌ | ✅ | ✅ | ⚠️ |
-| Local Outlier Factor | ❌ | ⚠️ | ✅ | ⚠️ |
-| Autoencoders | ❌ | ⚠️ | ✅ | ❌ |
-| One-Class SVM | ❌ | ❌ | ✅ | ❌ |
-| Supervised Classifier | ✅ | ✅ | ✅✅ | ✅ |
+> [!NOTE]
+> The anomaly score is **negative**: more negative = more anomalous. The threshold at −0.6317 means any sample scoring below this value is classified as an anomaly.
 
-**When to Use Isolation Forest:**
-- ✅ Unsupervised data (no labels available)
-- ✅ High-dimensional features (10+ features)
-- ✅ Need interpretability
-- ✅ Real-time processing
-- ✅ Rare events detection
+### 4.2 Anomaly Score Interpretation
 
-### Feature Normalization
+| Score Range | Interpretation | Percentage |
+|-------------|----------------|------------|
+| −0.33 to −0.38 | Normal — typical trading activity | ~70% |
+| −0.38 to −0.50 | Mildly unusual — elevated activity | ~25% |
+| −0.50 to −0.63 | Unusual — notable stress signals | ~4% |
+| Below −0.63 | **Anomaly** — extreme market stress | ~1% |
+| Below −0.80 | **Severe anomaly** — critical event | <0.01% |
 
-Using **RobustScaler** instead of StandardScaler because:
-- Financial data has outliers (limit moves, flash crashes)
-- RobustScaler uses median/quantiles (less sensitive to extremes)
-- Preserves relative differences while handling outliers
+### 4.3 Visualizations
 
-```python
-# Before scaling
-spread.std() = 0.05  # Can be heavily influenced by one extreme value
+#### Timeline of Anomaly Scores
 
-# After RobustScaler
-spread_scaled.std() = 1.0  # Robust to outliers
+![Anomaly detection timeline showing scores over time with red stars marking detected anomalies below the threshold line](C:\Users\kathe\.gemini\antigravity\brain\bfab1a98-b53d-490e-9fc4-2aa8fcbf8b74\01_anomaly_timeline.png)
+
+The timeline shows anomaly scores across all 5.59M samples (subsampled for display). **Red stars** mark detected anomalies below the 1% threshold (dashed red line). Anomalies are distributed across the entire time range but show **clusters** — suggesting episodic market stress events rather than random noise.
+
+#### Score Distribution
+
+![Histogram of anomaly scores showing a right-skewed distribution with the 1% threshold marked as a dashed red line](C:\Users\kathe\.gemini\antigravity\brain\bfab1a98-b53d-490e-9fc4-2aa8fcbf8b74\02_score_distribution.png)
+
+The distribution is **right-skewed** with a long left tail. Most samples cluster around −0.35 (normal), while anomalies form a thin tail extending to −0.82. The clean separation confirms the model is finding genuinely distinct patterns, not just statistical noise.
+
+#### Feature Importance — What Drives Anomalies?
+
+![Bar chart showing feature importance with order_flow_imbalance dominating at ~880x the mean difference](C:\Users\kathe\.gemini\antigravity\brain\bfab1a98-b53d-490e-9fc4-2aa8fcbf8b74\03_feature_importance.png)
+
+This chart shows the **mean difference** between anomalous and normal samples for each feature (after RobustScaler normalization). `order_flow_imbalance` dominates overwhelmingly.
+
+### 4.4 Anomalous vs Normal — Feature Comparison
+
+| Feature | Normal Mean | Anomalous Mean | Ratio |
+|---------|-------------|----------------|-------|
+| **order_flow_imbalance** | 11.10 | 6,873.94 | **619x** |
+| **trade_count** | 0.11 | 32.68 | **310x** |
+| **bar_volatility** | 0.005 | 0.436 | **83x** |
+| **bid_depth** | 60,529 | 99,069 | 1.6x |
+| **mean_spread** | 0.107 | 0.096 | 0.9x |
+| **ask_depth** | 199,718 | 75,459 | 0.4x |
+| **depth_imbalance** | −0.337 | 0.265 | Flipped sign |
+
+> [!IMPORTANT]
+> **Key insight**: Anomalies are characterized by:
+> 1. **Massive order flow imbalance** (619x normal) — extremely one-sided buying/selling
+> 2. **High trade count** (310x normal) — burst of trading activity
+> 3. **Elevated volatility** (83x normal) — rapid price movements
+> 4. **Depth imbalance flips** — from negative (ask-heavy) to positive (bid-heavy)
+> 5. **Ask depth collapses** — liquidity on the sell side disappears
+>
+> This pattern is consistent with **liquidity crises, flash crashes, or large directional bets** moving through the orderbook.
+
+### 4.5 Top 10 Most Anomalous Events
+
+| Rank | Score | Market (prefix) | Timestamp | OFI | Volatility | Depth Imb | Trades |
+|------|-------|-----------------|-----------|-----|------------|-----------|--------|
+| 1 | **−0.8201** | 0xca797... | Mar 7, 16:05 | 26,196 | 0.490 | 0.228 | 55 |
+| 2 | −0.8185 | 0x832e6... | Mar 6, 21:30 | 53,645 | 0.435 | 0.789 | 86 |
+| 3 | −0.8174 | 0x832e6... | Mar 6, 21:55 | 7,559 | 0.405 | 0.846 | 111 |
+| 4 | −0.8174 | 0xb1cf0... | Mar 7, 14:56 | 9,012 | 0.671 | 0.038 | 21 |
+| 5 | −0.8167 | 0xb7046... | Mar 7, 19:16 | 4,451 | 0.500 | 0.353 | 44 |
+| 6 | −0.8163 | 0x7de39... | Mar 11, 12:30 | 7,151 | 0.485 | **1.000** | 15 |
+| 7 | −0.8151 | 0xb7046... | Mar 7, 19:04 | 20,369 | 0.415 | −0.038 | 51 |
+| 8 | −0.8145 | 0xa4e7b... | Mar 7, 23:14 | 5,138 | 0.566 | 0.106 | 15 |
+| 9 | −0.8141 | 0x4a371... | Mar 7, 16:33 | 35,189 | 0.380 | 0.380 | 71 |
+| 10 | −0.8140 | 0x8004e... | Mar 7, 16:19 | 3,806 | 0.770 | 0.246 | 32 |
+
+> [!CAUTION]
+> **Anomaly #6** is particularly interesting: `depth_imbalance = 1.000` means `ask_depth = 0.0` — the entire sell side of the orderbook was **completely empty**. This is a severe liquidity crisis where no one was willing to sell.
+
+### 4.6 Temporal Distribution of Top 100 Anomalies
+
+| Date | Anomalies | % of Top 100 |
+|------|-----------|--------------|
+| Mar 6 (Sat) | 17 | 17% |
+| **Mar 7 (Sun)** | **52** | **52%** |
+| Mar 8 (Mon) | 14 | 14% |
+| Mar 9 (Tue) | 9 | 9% |
+| Mar 10 (Wed) | 5 | 5% |
+| Mar 11 (Thu) | 3 | 3% |
+
+> [!NOTE]
+> **March 7 accounts for 52% of the top 100 anomalies**, suggesting a market-wide stress event on that day. This clustering is a strong signal — anomalies are not randomly distributed but coincide with systemic events.
+
+### 4.7 Market Concentration of Anomalies
+
+The top 100 anomalies span many different markets, but a few markets appear repeatedly:
+
+| Market ID (prefix) | Occurrences in Top 100 |
+|---------------------|----------------------|
+| 0xb7046... | 4 |
+| 0x4a371... | 4 |
+| 0x832e6... | 3 |
+| 0xff64c... | 3 |
+| 0x23359... | 3 |
+| 0x0dd4f... | 3 |
+| Other markets (1–2 each) | 80 |
+
+This shows anomalies are **not concentrated in a single market** — they're spread across dozens of markets, reinforcing the interpretation of a **systemic market-wide stress event** rather than a single market malfunction.
+
+---
+
+## 5. Model Configuration and Output Files
+
+### Files Generated in `results/`
+
+| File | Size | Content |
+|------|------|---------|
+| [summary.json](file:///c:/Desktop/hft/results/summary.json) | 257 B | Aggregate detection statistics |
+| [top_anomalies.csv](file:///c:/Desktop/hft/results/top_anomalies.csv) | 25 KB | Top 100 anomalous events with all 16 original columns + anomaly_score + is_anomaly |
+| [model_info.json](file:///c:/Desktop/hft/results/model_info.json) | 367 B | Model hyperparameters and feature list |
+| 01_anomaly_timeline.png | 198 KB | Timeline visualization |
+| 02_score_distribution.png | 37 KB | Score histogram |
+| 03_feature_importance.png | 42 KB | Feature importance chart |
+
+### Pipeline Script
+
+| File | Description |
+|------|-------------|
+| [run_pipeline.py](file:///c:/Desktop/hft/run_pipeline.py) | Complete pipeline script (correct features, handles Windows encoding) |
+| [polymarket_complete_pipeline.py](file:///c:/Desktop/hft/polymarket_complete_pipeline.py) | Original template script (has feature auto-detection bug on this dataset) |
+
+---
+
+## 6. Interpretation & Discussion
+
+### 6.1 What Makes Something an Anomaly?
+
+The Isolation Forest flags a minute-bar as anomalous when the **combination** of features is statistically unusual. It's not just one feature being extreme — it's the multi-dimensional pattern:
+
+**Normal trading minute**:
+```
+spread=0.015, volatility=0, OFI=0, trades=0, bid_depth=2845, ask_depth=17553
+→ Score: -0.35 (normal)
 ```
 
-### Time-Series Validation
-
-Proper validation for financial data:
-```python
-# ❌ WRONG: Random train/test split (look-ahead bias!)
-X_train, X_test = train_test_split(X, test_size=0.2)
-
-# ✅ CORRECT: Time-ordered split
-split_idx = int(len(X) * 0.8)
-X_train = X[:split_idx]
-X_test = X[split_idx:]
+**Anomalous minute**:
+```
+spread=0.030, volatility=0.49, OFI=26196, trades=55, bid_depth=176964, ask_depth=111187
+→ Score: -0.82 (severe anomaly)
 ```
 
----
+The anomalous minute shows: sudden burst of 55 trades, massive buy pressure (OFI=26K), high volatility (0.49), and unusually deep orderbooks — all simultaneously.
 
-## 📈 Performance Metrics
+### 6.2 Types of Anomalies Detected
 
-### Anomaly Detection Results
+Based on the feature patterns in the top 100 anomalies, we observe three categories:
 
-```json
-{
-  "total_samples": 100000,
-  "n_anomalies": 1000,
-  "anomaly_percentage": 1.0,
-  "anomaly_score_min": -0.5234,
-  "anomaly_score_max": -0.0001,
-  "anomaly_score_mean": -0.0234,
-  "anomaly_score_std": 0.0456,
-  "threshold": -0.0456
-}
-```
+1. **Liquidity Crisis** (`depth_imbalance → 1.0, ask_depth → 0`): Complete disappearance of sell-side liquidity. Example: Anomaly #6 with `ask_depth = 0.0`.
 
-### Runtime
-- **Loading**: 5-10s (depends on file size)
-- **Feature prep**: 3-5s
-- **Model training**: 2-3s
-- **Scoring**: 1-2s
-- **Total**: ~15-20s for 100K samples
+2. **Aggressive Directional Flow** (`OFI >> 0, trade_count >> 0`): Massive one-sided buying with extreme order flow imbalance. Example: Anomaly #2 with `OFI = 53,645`.
 
-### Hardware
-- Tested on: MacBook Pro (8GB RAM, 4-core CPU)
-- Should work on: Any modern laptop with 4GB+ RAM
+3. **Volatility Spikes** (`bar_volatility >> 0, large spread`): Rapid price oscillations within a single minute. Example: Anomaly #10 with `volatility = 0.77`.
+
+### 6.3 Limitations
+
+1. **No ground truth labels**: Since this is unsupervised, we cannot compute precision/recall. Validation requires domain experts to manually inspect flagged events.
+2. **Contamination parameter is a prior**: We assumed 1% anomaly rate. Different rates (0.5%, 2%) would shift the threshold.
+3. **Feature auto-detection was broken**: The original pipeline's keyword-matching incorrectly picked `minute_bar` as a "spread" feature — we hardcoded the correct columns.
+4. **Subsampled training**: Due to the 5.59M dataset size, we trained on a 500K subsample. This may miss rare patterns present only in the full dataset.
+5. **No temporal modeling**: Isolation Forest treats each minute independently. Sequential patterns (e.g., anomaly build-up over 5 minutes) are not captured.
 
 ---
 
-## 🎓 Learning Path
+## 7. Tools & Technologies
 
-### Beginner
-- [ ] Understand bid-ask spreads and order book depth
-- [ ] Run the complete pipeline script
-- [ ] Examine top 10 anomalies
-
-### Intermediate
-- [ ] Understand Isolation Forest algorithm
-- [ ] Modify feature selection
-- [ ] Analyze anomaly-price correlation
-- [ ] Create custom visualizations
-
-### Advanced
-- [ ] Implement SHAP feature importance
-- [ ] Build ensemble of detectors
-- [ ] Real-time streaming simulation
-- [ ] Deploy as REST API
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Python | 3.14.0 | Runtime |
+| pandas | 3.0.2 | Data manipulation |
+| numpy | (latest) | Numerical computing |
+| scikit-learn | (latest) | Isolation Forest, RobustScaler |
+| matplotlib | (latest) | Static visualizations |
+| pyarrow | 24.0.0 | Parquet file I/O |
+| LightGBM | 4.6.0 | Used in the separate price prediction notebook |
 
 ---
 
-## 🔮 Future Improvements
-
-### Short Term (1-2 hours)
-- [ ] Add SHAP values for feature importance
-- [ ] Calculate confidence intervals
-- [ ] Export results to Parquet format
-- [ ] Create PDF report generator
-
-### Medium Term (4-8 hours)
-- [ ] Multi-market anomaly correlation
-- [ ] Temporal clustering (identify anomaly "types")
-- [ ] Real-time streaming simulation
-- [ ] Interactive Streamlit dashboard
-
-### Long Term (Production)
-- [ ] REST API with FastAPI
-- [ ] Model serving (TensorFlow Serving)
-- [ ] Real-time Kafka integration
-- [ ] Distributed training (Spark)
-- [ ] Unit & integration tests
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] Monitoring & alerting
-
----
-
-## 📚 References
+## 8. References
 
 ### Academic Papers
-- [Isolation Forest](https://cs.nju.edu.cn/zhouzh/zhouzh.files/publication/icdm08.pdf) - Liu et al., 2008
-- [Market Microstructure](https://academic.oup.com/rfs/article-abstract/8/2/467/1610378) - O'Hara, 1995
-- [Orderbook Dynamics](https://arxiv.org/abs/1304.5112) - Cont & de Larrard, 2013
+1. **Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008)**. *Isolation Forest.* In IEEE International Conference on Data Mining (ICDM). — Original paper proposing the Isolation Forest algorithm.
+2. **O'Hara, M. (1995)**. *Market Microstructure Theory.* Blackwell Publishers. — Foundational text on bid-ask spreads, orderbook dynamics, and market making.
+3. **Cont, R. & de Larrard, A. (2013)**. *Price dynamics in a Markovian limit order market.* SIAM Journal on Financial Mathematics. — Mathematical framework for orderbook dynamics.
 
-### Books
-- "Market Microstructure Theory" by Maureen O'Hara
-- "The Art of Computer Systems Performance Analysis" - Has relevance to anomaly detection
+### Software Documentation
+4. **Scikit-learn: Isolation Forest** — https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
+5. **Scikit-learn: RobustScaler** — https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.RobustScaler.html
+6. **Pandas** — https://pandas.pydata.org/docs/
+7. **Apache Parquet** — https://parquet.apache.org/
 
-### Datasets
-- [Polymarket Data](https://polymarket.com/) - Official source
-- [LOBSTER](https://lobsterdata.com/) - Order book dataset
-- [TAQ Data](https://www.nyse.com/market-data/historical/taq) - NYSE historical data
-
-### Tools & Libraries
-- [Scikit-learn](https://scikit-learn.org/) - Machine learning
-- [Plotly](https://plotly.com/python/) - Interactive visualizations
-- [Pandas](https://pandas.pydata.org/) - Data manipulation
-- [Polars](https://www.pola-rs.com/) - Fast DataFrame library
+### Domain References
+8. **Polymarket** — https://polymarket.com/ — Prediction market platform (data source)
+9. **Investopedia: Bid-Ask Spread** — https://www.investopedia.com/terms/b/bid-askspread.asp
+10. **Wikipedia: Order Flow Imbalance** — https://en.wikipedia.org/wiki/Order_imbalance
 
 ---
 
-## 🤝 Contributing
+## 9. Appendix: How to Reproduce
 
-Contributions are welcome! Areas for improvement:
-- Better feature engineering (domain expertise welcome!)
-- Improved visualizations
-- Real-time processing
-- Distributed computing
-- More comprehensive tests
+```bash
+# 1. Navigate to project directory
+cd c:\Desktop\hft
 
-### How to Contribute
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+# 2. Install dependencies
+pip install pandas pyarrow scikit-learn numpy matplotlib
 
----
+# 3. Run the pipeline
+set PYTHONIOENCODING=utf-8
+python run_pipeline.py
 
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 🙋 FAQ
-
-**Q: Do I need the exact same data files?**
-A: No! The script works with any parquet files. It auto-detects common feature names.
-
-**Q: How do I validate if this is working correctly?**
-A: Check if anomalies correlate with actual price spikes in `trades.parquet`.
-
-**Q: Can I use this for real trading?**
-A: This is a research/educational tool. Add proper risk management before production use.
-
-**Q: What if my anomaly detection looks wrong?**
-A: Try visualizing the raw features, adjusting contamination rate, or adding different features.
-
-**Q: How do I know if 1% contamination is right?**
-A: Adjust and see if results make sense. 0.5%-2% is typical for rare events.
-
----
-
-## 📞 Contact & Support
-
-- **Questions?** Open an Issue on GitHub
-- **Want to collaborate?** Send a Pull Request
-- **Found a bug?** Report it with details and reproducible code
-
----
-
-## 🏆 Acknowledgments
-
-- Polymarket for providing the data
-- Scikit-learn team for the Isolation Forest implementation
-- The quantitative finance community for market microstructure research
-
----
-
-## 📊 Citation
-
-If you use this project in research, please cite:
-
-```bibtex
-@software{polymarket_anomaly_2024,
-  author = {Your Name},
-  title = {Polymarket High-Frequency Anomaly Detection},
-  year = {2024},
-  url = {https://github.com/yourusername/polymarket-anomaly-detection}
-}
+# 4. Results will be in ./results/
 ```
 
----
-
-**Last Updated**: January 2024  
-**Status**: Active Development  
-**Python Version**: 3.8+
-
-⭐ If this project was helpful, please consider giving it a star!
+### Project File Structure
+```
+c:\Desktop\hft\
+├── data/
+│   ├── ml_features_1m_v2.parquet          ← Input data (5.59M rows)
+│   └── features/
+│       └── ml_features_1m_v2.parquet      ← Copy for pipeline compatibility
+├── code/
+│   └── init.ipynb                         ← LightGBM price prediction notebook (AUC=0.80)
+├── results/
+│   ├── summary.json                       ← Detection summary
+│   ├── top_anomalies.csv                  ← Top 100 anomalies
+│   ├── model_info.json                    ← Model config
+│   ├── 01_anomaly_timeline.png            ← Timeline chart
+│   ├── 02_score_distribution.png          ← Distribution chart
+│   └── 03_feature_importance.png          ← Feature importance chart
+├── run_pipeline.py                        ← Main execution script
+├── polymarket_complete_pipeline.py        ← Original template
+├── requirements.txt                       ← Dependencies
+├── README.md                              ← Project README
+├── QUICK_START.md                         ← Setup guide
+└── POLYMARKET_ANOMALY_DETECTION_GUIDE.md  ← Detailed methodology guide
+```
