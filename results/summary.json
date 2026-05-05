@@ -1,7 +1,7 @@
 {
   "total_samples": 5587547,
-  "n_anomalies": 56833,
-  "anomaly_percentage": 1.0171,
+  "n_anomalies": 28450,
+  "anomaly_percentage": 0.5092,
   "anomaly_score_min": -0.820058,
   "anomaly_score_max": -0.327244,
   "anomaly_score_mean": -0.388335,

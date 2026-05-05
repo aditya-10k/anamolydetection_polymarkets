@@ -33,7 +33,6 @@ print(df['target'].value_counts().to_string())
 print(f'Positive rate: {df["target"].mean():.4f}')
 print()
 
-# Anomaly results
 anom = pd.read_csv('results/top_anomalies.csv')
 print('=== TOP 100 ANOMALIES: MARKET DISTRIBUTION ===')
 print(anom['market_id'].value_counts().head(10).to_string())
@@ -51,7 +50,6 @@ corr = df[feat_cols].corr().round(3)
 print(corr.to_string())
 print()
 
-# Summary stats for anomalies vs normal
 print('=== ANOMALOUS vs NORMAL: MEAN COMPARISON ===')
 all_anom = pd.read_csv('results/top_anomalies.csv')
 for col in feat_cols:

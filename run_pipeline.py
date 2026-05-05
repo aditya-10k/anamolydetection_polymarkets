@@ -22,14 +22,12 @@ print("=" * 80)
 print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print("=" * 80)
 
-# ── Step 1: Load data ──────────────────────────────────────────
 print("\n[1/6] LOADING DATA")
 print("-" * 72)
 df = pd.read_parquet('data/ml_features_1m_v2.parquet')
 print(f"Loaded features: {df.shape[0]:,} rows, {df.shape[1]} columns")
 print(f"Columns: {list(df.columns)}")
 
-# ── Step 2: Prepare features ──────────────────────────────────
 print("\n[2/6] PREPARING FEATURES")
 print("-" * 72)
 feature_cols = [
@@ -53,12 +51,10 @@ X_scaled_df = pd.DataFrame(X_scaled, columns=feature_cols)
 print(f"Normalized {len(feature_cols)} features via RobustScaler")
 print(f"Shape: {X_scaled_df.shape}")
 
-# ── Step 3: Train model ──────────────────────────────────────
 print("\n[3/6] TRAINING MODEL")
 print("-" * 72)
 n = len(X_scaled_df)
 
-# Subsample for speed if dataset is very large
 if n > 500_000:
     sample_idx = np.random.RandomState(42).choice(n, 500_000, replace=False)
     sample_idx.sort()
@@ -69,7 +65,7 @@ else:
     print(f"Training on {len(X_train):,} samples")
 
 model = IsolationForest(
-    contamination=0.01,
+    contamination=0.005,
     n_estimators=100,
     random_state=42,
     n_jobs=-1,
@@ -77,7 +73,6 @@ model = IsolationForest(
 model.fit(X_train)
 print("Model trained!")
 
-# ── Step 4: Detect anomalies on FULL data ─────────────────────
 print("\n[4/6] DETECTING ANOMALIES")
 print("-" * 72)
 scores = model.score_samples(X_scaled_df)
@@ -99,7 +94,6 @@ print(f"Anomalies detected: {summary['n_anomalies']:,} ({summary['anomaly_percen
 print(f"Score range: [{summary['anomaly_score_min']:.4f}, {summary['anomaly_score_max']:.4f}]")
 print(f"Detection threshold: {summary['threshold']:.4f}")
 
-# ── Step 5: Analyze ──────────────────────────────────────────
 print("\n[5/6] ANALYZING RESULTS")
 print("-" * 72)
 
@@ -115,13 +109,10 @@ for rank, idx in enumerate(top_idx, 1):
     print(f"   ofi={row['order_flow_imbalance']:.4f}, depth_imb={row['depth_imbalance']:.4f}")
     print(f"   bid_depth={row['bid_depth']:.2f}, ask_depth={row['ask_depth']:.2f}")
 
-# ── Step 6: Visualizations ────────────────────────────────────
 print("\n[6/6] CREATING VISUALIZATIONS")
 print("-" * 72)
 
-# 1. Anomaly timeline
 fig, ax = plt.subplots(figsize=(14, 5))
-# Subsample for plotting
 plot_step = max(1, len(scores) // 50000)
 plot_scores = scores[::plot_step]
 ax.plot(plot_scores, color='steelblue', alpha=0.6, linewidth=0.5)
@@ -144,7 +135,6 @@ plt.savefig(output_dir / '01_anomaly_timeline.png', dpi=150, bbox_inches='tight'
 plt.close()
 print(f"  Saved: {output_dir / '01_anomaly_timeline.png'}")
 
-# 2. Score distribution
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.hist(scores, bins=100, color='steelblue', alpha=0.7, edgecolor='black', linewidth=0.3)
 ax.axvline(x=threshold, color='red', linestyle='--', linewidth=2,
@@ -158,7 +148,6 @@ plt.savefig(output_dir / '02_score_distribution.png', dpi=150, bbox_inches='tigh
 plt.close()
 print(f"  Saved: {output_dir / '02_score_distribution.png'}")
 
-# 3. Feature importance (which features are most anomalous)
 fig, ax = plt.subplots(figsize=(10, 5))
 anomalous_rows = X_scaled_df.iloc[np.where(predictions == -1)[0]]
 normal_rows = X_scaled_df.iloc[np.where(predictions == 1)[0]]
@@ -173,24 +162,20 @@ plt.savefig(output_dir / '03_feature_importance.png', dpi=150, bbox_inches='tigh
 plt.close()
 print(f"  Saved: {output_dir / '03_feature_importance.png'}")
 
-# ── Save results ─────────────────────────────────────────────
 print("\nSAVING RESULTS")
 print("-" * 72)
 
-# Save summary
 with open(output_dir / 'summary.json', 'w') as f:
     json.dump(summary, f, indent=2)
 print(f"  Saved: {output_dir / 'summary.json'}")
 
-# Save top anomalies
-df_copy = df.copy()
-df_copy['anomaly_score'] = scores
-df_copy['is_anomaly'] = predictions == -1
-top100 = df_copy.nsmallest(100, 'anomaly_score')
+top100_idx = np.argsort(scores)[:100]
+top100 = df.iloc[top100_idx].copy()
+top100['anomaly_score'] = scores[top100_idx]
+top100['is_anomaly'] = True
 top100.to_csv(output_dir / 'top_anomalies.csv', index=False)
 print(f"  Saved: {output_dir / 'top_anomalies.csv'}")
 
-# Save model info
 model_info = {
     'model_type': 'IsolationForest',
     'contamination': 0.01,

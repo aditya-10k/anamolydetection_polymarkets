@@ -1,0 +1,88 @@
+{
+  "timestamp": "2026-05-05 10:37:47",
+  "contamination_rates_tested": [
+    0.005,
+    0.01,
+    0.015,
+    0.02,
+    0.03,
+    0.05
+  ],
+  "optimal_contamination": 0.005,
+  "elbow_suggested_rate": 0.002,
+  "total_samples": 5587547,
+  "results": [
+    {
+      "contamination": 0.005,
+      "threshold": -0.6625501917017738,
+      "n_anomalies": 27938,
+      "anomaly_pct": 0.5,
+      "silhouette": 0.97954,
+      "calinski_harabasz": 1287.46,
+      "davies_bouldin": 1.49148,
+      "feature_separation": 230.2858,
+      "top100_recall": 1.0,
+      "composite_score": 1.0
+    },
+    {
+      "contamination": 0.01,
+      "threshold": -0.6316568580382048,
+      "n_anomalies": 55875,
+      "anomaly_pct": 1.0,
+      "silhouette": 0.95239,
+      "calinski_harabasz": 794.02,
+      "davies_bouldin": 1.75634,
+      "feature_separation": 129.0216,
+      "top100_recall": 1.0,
+      "composite_score": 0.5482
+    },
+    {
+      "contamination": 0.015,
+      "threshold": -0.6099370477034712,
+      "n_anomalies": 83813,
+      "anomaly_pct": 1.5,
+      "silhouette": 0.93907,
+      "calinski_harabasz": 933.01,
+      "davies_bouldin": 1.82973,
+      "feature_separation": 90.3089,
+      "top100_recall": 1.0,
+      "composite_score": 0.479
+    },
+    {
+      "contamination": 0.02,
+      "threshold": -0.5928028258335899,
+      "n_anomalies": 111713,
+      "anomaly_pct": 1.999,
+      "silhouette": 0.94746,
+      "calinski_harabasz": 880.18,
+      "davies_bouldin": 1.86554,
+      "feature_separation": 75.8074,
+      "top100_recall": 1.0,
+      "composite_score": 0.4582
+    },
+    {
+      "contamination": 0.03,
+      "threshold": -0.5661677316150485,
+      "n_anomalies": 167626,
+      "anomaly_pct": 3.0,
+      "silhouette": 0.92525,
+      "calinski_harabasz": 761.38,
+      "davies_bouldin": 1.92825,
+      "feature_separation": 57.104,
+      "top100_recall": 1.0,
+      "composite_score": 0.3078
+    },
+    {
+      "contamination": 0.05,
+      "threshold": -0.5266664628001702,
+      "n_anomalies": 279378,
+      "anomaly_pct": 5.0,
+      "silhouette": 0.88138,
+      "calinski_harabasz": 472.88,
+      "davies_bouldin": 2.07886,
+      "feature_separation": 36.6993,
+      "top100_recall": 1.0,
+      "composite_score": 0.0
+    }
+  ]
+}

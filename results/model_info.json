@@ -13,5 +13,5 @@
   ],
   "training_samples": 500000,
   "total_samples_scored": 5587547,
-  "anomalies_detected": 56833
+  "anomalies_detected": 28450
 }
